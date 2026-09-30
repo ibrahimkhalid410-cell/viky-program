@@ -189,7 +189,7 @@ table.m{border-collapse:collapse;width:100%;min-width:620px;font-size:.92rem}
 .memo{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;padding:9px 12px;border:1px dashed var(--c);border-radius:10px;font-size:.88rem;max-width:68ch}
 .memo b{font-weight:700}
 .memo .today{color:var(--c);font-weight:700}
-.log{grid-column:2;display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.log{grid-column:2;grid-row:2;display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
 .log label{display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted)}
 .log input{width:82px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 .done{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;background:transparent;font-weight:600;font-size:.88rem}
@@ -214,6 +214,25 @@ textarea{width:100%;margin-top:12px;padding:10px;border:1px solid var(--line);bo
 
 footer{margin:60px 0 90px;color:var(--muted);font-size:.9rem;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 footer .sig{font-size:1.15rem;color:var(--ink)}
+
+.ex{grid-template-columns:44px 1fr 150px}
+.ex .fig{grid-column:3;grid-row:1 / span 2;display:flex;flex-direction:column;align-items:center;gap:6px}
+.ex .fig svg{width:150px;height:125px;background:var(--bg);border-radius:12px;border:1px solid var(--line)}
+.ex .fig a{font-size:.8rem;font-weight:700;color:var(--c);text-decoration:none;white-space:nowrap}
+.ex .fig a:hover{text-decoration:underline}
+.checkin{margin-top:22px;background:#FFF4DC;color:#3A2A08;border-radius:16px;padding:16px 18px;max-width:640px;border-left:6px solid #E2A94A;animation:rise .6s 1s both}
+.checkin h3{font-size:1.2rem;margin:0 0 4px;color:#3A2A08}
+.checkin p{margin:0 0 12px;font-size:.95rem}
+.checkin .row{display:flex;flex-wrap:wrap;gap:8px}
+.checkin button{border:0;border-radius:999px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:.88rem}
+.checkin .pri{background:#1E4A34;color:#fff}
+.checkin .sec{background:rgba(0,0,0,.07);color:#3A2A08}
+.next-ci{margin:12px 0 0;font-size:.9rem;font-weight:600;color:var(--good)}
+@media (max-width:760px){
+  .ex{grid-template-columns:34px 1fr}
+  .ex .fig{grid-column:1 / -1;grid-row:auto;flex-direction:row;justify-content:flex-start;gap:14px;margin-top:10px}
+  .ex .fig svg{width:140px;height:117px}
+}
 
 @media (max-width:760px){
   .grid2{grid-template-columns:1fr}
@@ -255,6 +274,7 @@ footer .sig{font-size:1.15rem;color:var(--ink)}
     </div>
     <p class="hype">You've been waiting for this plan.<br>Now show me your <span class="rot" aria-live="off"><span id="rotWord">discipline</span></span>.</p>
     <button class="go" type="button" id="goBtn">Let's start: open today's workout</button>
+    <div id="checkinBanner"></div>
     <p class="tagline">Stronger glutes, a freer swing</p>
     <p class="lede">Your 12-week plan: two machine days and two free-weight days to build muscle, Pilates and yoga to recover and move well, and a golf block that turns that strength into rotation.</p>
     <div class="facts">
@@ -316,6 +336,7 @@ footer .sig{font-size:1.15rem;color:var(--ink)}
         <label class="field">Arm (cm)<input type="number" inputmode="decimal" step="0.1" data-m="arm"></label>
       </div>
       <div style="margin-top:14px"><button class="btn" type="button" id="saveCheckin">Save check-in</button></div>
+      <p class="next-ci" id="nextCheckin"></p>
       <div class="tbl-wrap" id="measureTable"></div>
     </div>
   </section>
@@ -417,6 +438,195 @@ footer .sig{font-size:1.15rem;color:var(--ink)}
 <div class="status" id="status" data-s="local" role="status"><i></i><span id="statusText">Saved on this phone</span></div>
 
 <script>
+const FIG = (function(){
+const L = {torso:28, neck:8, headR:6, ua:15, fa:14, th:20, sh:20, foot:7};
+const rad = a => a*Math.PI/180;
+const dir = a => [Math.cos(rad(a)), -Math.sin(rad(a))];
+const add = (p,v,k=1) => [p[0]+v[0]*k, p[1]+v[1]*k];
+const lerp = (a,b,s) => a+(b-a)*s;
+const r1 = v => Math.round(v*10)/10;
+
+function ik(root, target, l1, l2, pref){
+  let dx=target[0]-root[0], dy=target[1]-root[1], d=Math.hypot(dx,dy)||0.001;
+  let tx=target[0], ty=target[1];
+  const maxd=l1+l2-0.05, mind=Math.abs(l1-l2)+0.5;
+  if(d>maxd){ tx=root[0]+dx/d*maxd; ty=root[1]+dy/d*maxd; d=maxd; }
+  if(d<mind){ tx=root[0]+dx/d*mind; ty=root[1]+dy/d*mind; d=mind; }
+  const ux=(tx-root[0])/d, uy=(ty-root[1])/d;
+  const a=(l1*l1-l2*l2+d*d)/(2*d), h=Math.sqrt(Math.max(0,l1*l1-a*a));
+  const mx=root[0]+ux*a, my=root[1]+uy*a;
+  const jb=[mx-uy*h, my+ux*h], jf=[mx+uy*h, my-ux*h];
+  let j;
+  switch(pref){
+    case "f": j=jf; break; case "b": j=jb; break;
+    case "u": j = jf[1]<jb[1]?jf:jb; break; case "d": j = jf[1]>jb[1]?jf:jb; break;
+    case "l": j = jf[0]<jb[0]?jf:jb; break; case "r": j = jf[0]>jb[0]?jf:jb; break;
+    default: j=jf;
+  }
+  return [j,[tx,ty]];
+}
+
+function base(p, front){
+  const hip=p.h, td=dir(p.t), neck=add(hip,td,L.torso);
+  const head=add(neck,dir(p.hd??p.t),L.neck);
+  let sN,sF,hN,hF;
+  if(front){ sN=[neck[0]+6,neck[1]+3]; sF=[neck[0]-6,neck[1]+3]; hN=[hip[0]+5,hip[1]]; hF=[hip[0]-5,hip[1]]; }
+  else { sN=sF=add(neck,td,-3); hN=hF=hip; }
+  return {hip,neck,head,td,sN,sF,hN,hF};
+}
+function world(spec, b, p){
+  if(!Array.isArray(spec)) return null;
+  const [x,y,,fr]=spec;
+  if(fr==="n") return [b.neck[0]+x, b.neck[1]+y];
+  if(fr==="h") return [b.hip[0]+x, b.hip[1]+y];
+  if(fr==="t"){ const u=b.td, v=dir(p.t-90); return [b.hip[0]+u[0]*x+v[0]*y, b.hip[1]+u[1]*x+v[1]*y]; }
+  return [x,y];
+}
+
+function solve(fig, s){
+  const A=fig.k[0], B=fig.k[1];
+  const bA=base(A,fig.front), bB=base(B,fig.front);
+  const p={h:[lerp(A.h[0],B.h[0],s), lerp(A.h[1],B.h[1],s)], t:lerp(A.t,B.t,s), hd:lerp(A.hd??A.t, B.hd??B.t, s)};
+  const b=base(p,fig.front);
+  const J={hip:b.hip, neck:b.neck, head:b.head};
+  const limbs=[["aN","sN","eN","wN",L.ua,L.fa],["aF","sF","eF","wF",L.ua,L.fa],["lN","hN","kN","fN",L.th,L.sh],["lF","hF","kF","fF",L.th,L.sh]];
+  for(const [key,root,mid,end,l1,l2] of limbs){
+    const sa=A[key], sb=B[key], r=b[root];
+    J[root+"_"]=r;
+    if(sa && sa.a){
+      const u=lerp(sa.a[0],sb.a[0],s), l=lerp(sa.a[1],sb.a[1],s);
+      const m=add(r,dir(u),l1); J[mid]=m; J[end]=add(m,dir(l),l2);
+    } else if(sa){
+      const ta=world(sa,bA,A), tb=world(sb,bB,B);
+      const t=[lerp(ta[0],tb[0],s), lerp(ta[1],tb[1],s)];
+      const pref = (s<0.5?sa:sb)[2];
+      const [m,e]=ik(r,t,l1,l2,pref); J[mid]=m; J[end]=e;
+      if(key[0]==="l"){
+        const fa = sa[4]!=null ? lerp(sa[4], (sb[4]??sa[4]), s) : (fig.front ? (key==="lN"?0:180) : 0);
+        J["t"+key[1]] = add(e, dir(fa), fig.front?4:L.foot);
+      }
+    }
+    J[root]=r;
+  }
+  return J;
+}
+
+function render(fig, s, col){
+  const J=solve(fig,s);
+  const P = (...pts)=>"M"+pts.map(q=>r1(q[0])+" "+r1(q[1])).join(" L");
+  const farOp = fig.mono ? 1 : 0.42;
+  let back="", front="";
+  if(!fig.nofloor) back += `<line x1="4" y1="92.5" x2="116" y2="92.5" stroke="${col.muted}" stroke-width="1.2" opacity=".6"/>`;
+  for(const pr of fig.props||[]){
+    if(pr.r) back += `<rect x="${pr.r[0]}" y="${pr.r[1]}" width="${pr.r[2]}" height="${pr.r[3]}" rx="2.5" fill="${col.soft}" stroke="${col.muted}" stroke-width="1"/>`;
+    else if(pr.l) back += `<line x1="${pr.l[0]}" y1="${pr.l[1]}" x2="${pr.l[2]}" y2="${pr.l[3]}" stroke="${col.muted}" stroke-width="${pr.w||3}" stroke-linecap="round"/>`;
+    else if(pr.c) back += `<circle cx="${pr.c[0]}" cy="${pr.c[1]}" r="${pr.c[2]}" fill="${col.soft}" stroke="${col.muted}" stroke-width="1"/>`;
+    else if(pr.cable){ const a=J[pr.cable]; back += `<line x1="${r1(a[0])}" y1="${r1(a[1])}" x2="${pr.to[0]}" y2="${pr.to[1]}" stroke="${col.muted}" stroke-width="1.2"/>`; }
+    else if(pr.plat){ const a=J[pr.plat], d=dir(pr.ang), h=(pr.len||24)/2; front += `<line x1="${r1(a[0]-d[0]*h)}" y1="${r1(a[1]-d[1]*h)}" x2="${r1(a[0]+d[0]*h)}" y2="${r1(a[1]+d[1]*h)}" stroke="${col.muted}" stroke-width="4" stroke-linecap="round"/>`; }
+    else if(pr.pad){ const a=J[pr.pad]; front += `<circle cx="${r1(a[0]+(pr.dx||0))}" cy="${r1(a[1]+(pr.dy||0))}" r="${pr.rr||4}" fill="${col.muted}"/>`; }
+    else if(pr.db){ const a=J[pr.db]; const far = pr.db.endsWith("F") && !fig.mono; const g=`<rect x="${r1(a[0]-5)}" y="${r1(a[1]-2.6)}" width="10" height="5.2" rx="2.4" fill="${col.c}" opacity="${far?0.5:1}"/>`; if(far) back+=g; else front+=g; }
+    else if(pr.plate){ const a=J[pr.plate]; front += `<circle cx="${r1(a[0]+(pr.dx||0))}" cy="${r1(a[1]+(pr.dy||0))}" r="${pr.rr||8}" fill="${col.c}" opacity=".9"/><circle cx="${r1(a[0]+(pr.dx||0))}" cy="${r1(a[1]+(pr.dy||0))}" r="1.6" fill="${col.paper}"/>`; }
+    else if(pr.bar){ const a=J[pr.bar], h=(pr.len||16)/2; front += `<line x1="${r1(a[0]-h)}" y1="${r1(a[1])}" x2="${r1(a[0]+h)}" y2="${r1(a[1])}" stroke="${col.c}" stroke-width="3" stroke-linecap="round"/>`; }
+    else if(pr.ball){ const a=J[pr.ball]; front += `<circle cx="${r1(a[0]+3)}" cy="${r1(a[1]-2)}" r="${pr.rr||6}" fill="${col.c}"/>`; }
+  }
+  const limb=(r,m,e,t,op,w)=>`<path d="${P(...[J[r],J[m],J[e]].concat(t&&J[t]?[J[t]]:[]))}" fill="none" stroke="${col.ink}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" opacity="${op}"/>`;
+  let fig_="";
+  if(fig.glow){ fig_ += `<circle cx="${r1(J.hip[0])}" cy="${r1(J.hip[1])}" r="9" fill="${col.c}" opacity=".28"/>`; }
+  fig_ += limb("hF","kF","fF","tF",farOp,4.6) + limb("sF","eF","wF",null,farOp,4.2);
+  fig_ += `<path d="${P(J.hip,J.neck)}" stroke="${col.ink}" stroke-width="6" stroke-linecap="round"/>`;
+  fig_ += `<line x1="${r1(J.neck[0])}" y1="${r1(J.neck[1])}" x2="${r1(J.head[0])}" y2="${r1(J.head[1])}" stroke="${col.ink}" stroke-width="3.5" stroke-linecap="round"/><circle cx="${r1(J.head[0])}" cy="${r1(J.head[1])}" r="${L.headR}" fill="${col.ink}"/>`;
+  const nearLimbs = limb("hN","kN","fN","tN",1,4.6) + limb("sN","eN","wN",null,1,4.2);
+  // far-hand props sit between far and near layers; near props on top
+  return back + fig_ + nearLimbs + front;
+}
+
+const n=(x,y)=>[x,y,"b","n"];
+const F = {
+ htm:{glow:1, props:[{r:[14,62,30,28]},{pad:"hip",dy:-6,rr:5}], k:[
+   {h:[66,77],t:143,hd:150,aN:[70,72,"u"],aF:[68,72,"u"],lN:[89,90,"f"],lF:[86,90,"f"]},
+   {h:[72,60],t:180,hd:172,aN:[73,55,"u"],aF:[71,55,"u"],lN:[89,90,"f"],lF:[86,90,"f"]}]},
+ bht:{glow:1, props:[{r:[14,62,30,28]},{plate:"hip",dy:-8,rr:9}], k:[
+   {h:[66,77],t:143,hd:150,aN:[68,69,"u"],aF:[66,69,"u"],lN:[89,90,"f"],lF:[86,90,"f"]},
+   {h:[72,60],t:180,hd:172,aN:[72,52,"u"],aF:[70,52,"u"],lN:[89,90,"f"],lF:[86,90,"f"]}]},
+ lp:{glow:1, props:[{l:[48,72,28,40],w:5},{l:[38,75,58,75],w:5},{plat:"fN",ang:-38,len:28}], k:[
+   {h:[46,70],t:122,hd:112,aN:[52,74,"b"],aF:[50,74,"b"],lN:[62,46,"f",null,128],lF:[60,48,"f",null,128]},
+   {h:[46,70],t:122,hd:112,aN:[52,74,"b"],aF:[50,74,"b"],lN:[74,36,"f",null,128],lF:[72,38,"f",null,128]}]},
+ slc:{props:[{r:[34,64,28,6]},{l:[36,64,30,32],w:5},{pad:"fN",dy:-4,rr:4.5},{pad:"kN",dy:-5,rr:3.5}], k:[
+   {h:[50,62],t:84,hd:80,aN:[56,64,"b"],aF:[54,64,"b"],lN:[89,65,"f"],lF:[87,66,"f"]},
+   {h:[50,62],t:84,hd:80,aN:[56,64,"b"],aF:[54,64,"b"],lN:[63,81,"f"],lF:[61,82,"f"]}]},
+ ckb:{glow:1, props:[{r:[98,6,8,86]},{cable:"fN",to:[98,86]}], k:[
+   {h:[56,52],t:50,hd:40,aN:[96,42,"b"],aF:[96,44,"b"],lN:[52,89,"f"],lF:[62,90,"f"]},
+   {h:[56,52],t:50,hd:40,aN:[96,42,"b"],aF:[96,44,"b"],lN:[22,48,"f"],lF:[62,90,"f"]}]},
+ abd:{front:1, mono:1, glow:1, props:[{r:[42,54,36,12]},{pad:"kN",dx:5,rr:3.5},{pad:"kF",dx:-5,rr:3.5}], k:[
+   {h:[60,60],t:90,aN:[76,62,"f"],aF:[44,62,"b"],lN:[64,90,"f"],lF:[56,90,"b"]},
+   {h:[60,60],t:90,aN:[76,62,"f"],aF:[44,62,"b"],lN:[86,90,"f"],lF:[34,90,"b"]}]},
+ bex:{glow:1, props:[{l:[28,82,44,74],w:4},{l:[66,58,66,92],w:3},{pad:"hip",dx:4,dy:4,rr:5}], k:[
+   {h:[60,50],t:-65,hd:-72,aN:[18,5,"b","t"],aF:[18,3,"b","t"],lN:[36,77,"f"],lF:[38,77,"f"]},
+   {h:[60,50],t:49,hd:56,aN:[18,5,"b","t"],aF:[18,3,"b","t"],lN:[36,77,"f"],lF:[38,77,"f"]}]},
+ lpd:{props:[{r:[42,68,24,6]},{c:[72,59,4]},{cable:"wN",to:[62,2]},{bar:"wN",len:14}], k:[
+   {h:[52,66],t:100,hd:95,aN:[60,14,"b"],aF:[58,15,"b"],lN:[78,90,"f"],lF:[76,90,"f"]},
+   {h:[52,66],t:100,hd:95,aN:[62,42,"b"],aF:[60,43,"b"],lN:[78,90,"f"],lF:[76,90,"f"]}]},
+ idp:{props:[{l:[66,70,34,51],w:5},{r:[54,70,22,5]},{db:"wF"},{db:"wN"}], k:[
+   {h:[62,66],t:149,hd:140,aN:[18,10,"b","t"],aF:[18,8,"b","t"],lN:[84,90,"f"],lF:[82,90,"f"]},
+   {h:[62,66],t:149,hd:140,aN:[24,28,"b","t"],aF:[24,26,"b","t"],lN:[84,90,"f"],lF:[82,90,"f"]}]},
+ sar:{props:[{r:[18,64,66,6]},{l:[24,70,24,92],w:3},{l:[78,70,78,92],w:3},{db:"wN"}], k:[
+   {h:[36,55],t:4,hd:0,aN:[66,84,"b"],aF:[72,64,"b"],lN:[40,90,"f"],lF:[18,62,"f"]},
+   {h:[36,55],t:4,hd:0,aN:[46,60,"b"],aF:[72,64,"b"],lN:[40,90,"f"],lF:[18,62,"f"]}]},
+ sdp:{props:[{l:[40,70,40,30],w:5},{r:[40,70,26,5]},{db:"wF"},{db:"wN"}], k:[
+   {h:[48,66],t:92,hd:90,aN:[55,32,"b"],aF:[53,33,"b"],lN:[72,90,"f"],lF:[70,90,"f"]},
+   {h:[48,66],t:92,hd:90,aN:[50,9,"b"],aF:[48,10,"b"],lN:[72,90,"f"],lF:[70,90,"f"]}]},
+ dpo:{props:[{r:[30,61,44,6]},{l:[36,67,36,92],w:3},{l:[68,67,68,92],w:3},{db:"wN"}], k:[
+   {h:[70,57],t:180,hd:185,aN:[16,66,"b"],aF:[16,64,"b"],lN:[92,90,"f"],lF:[90,90,"f"]},
+   {h:[70,57],t:180,hd:185,aN:[46,27,"b"],aF:[44,27,"b"],lN:[92,90,"f"],lF:[90,90,"f"]}]},
+ lr:{front:1, mono:1, props:[{db:"wN"},{db:"wF"}], k:[
+   {h:[60,50],t:90,aN:[71,54,"f"],aF:[49,54,"b"],lN:[66,90,"f"],lF:[54,90,"b"]},
+   {h:[60,50],t:90,aN:[93,30,"f"],aF:[27,30,"b"],lN:[66,90,"f"],lF:[54,90,"b"]}]},
+ rdf:{props:[{db:"wN"},{db:"wF"}], k:[
+   {h:[48,52],t:22,hd:12,aN:{a:[-88,-82]},aF:{a:[-92,-86]},lN:[58,90,"f"],lF:[55,90,"f"]},
+   {h:[48,52],t:22,hd:12,aN:{a:[-205,-210]},aF:{a:[-209,-214]},lN:[58,90,"f"],lF:[55,90,"f"]}]},
+ sc:{props:[{db:"wN"}], k:[
+   {h:[60,50],t:90,hd:90,aN:[62,78,"b"],aF:[70,74,"b"],lN:[74,90,"f"],lF:[46,90,"f"]},
+   {h:[60,50],t:90,hd:90,aN:[62,78,"b"],aF:[50,74,"b"],lN:[48,90,"f"],lF:[74,90,"f"]}]},
+ rdl:{glow:1, props:[{plate:"wN",rr:8}], k:[
+   {h:[58,50],t:90,hd:90,aN:[61,70,"b"],aF:[59,70,"b"],lN:[60,90,"f"],lF:[58,90,"f"]},
+   {h:[44,53],t:14,hd:4,aN:[70,76,"b"],aF:[68,76,"b"],lN:[60,90,"f"],lF:[58,90,"f"]}]},
+ bss:{glow:1, props:[{r:[8,62,26,28]},{db:"wF"},{db:"wN"}], k:[
+   {h:[52,48],t:80,hd:80,aN:n(4,28),aF:n(1,28),lN:[74,90,"f"],lF:[28,61,"f",null,180]},
+   {h:[50,64],t:70,hd:72,aN:n(4,28),aF:n(1,28),lN:[74,90,"f"],lF:[28,61,"f",null,180]}]},
+ stu:{glow:1, props:[{r:[62,62,34,28]},{db:"wF"},{db:"wN"}], k:[
+   {h:[50,52],t:80,hd:80,aN:n(3,27),aF:n(0,27),lN:[74,62,"f"],lF:[46,90,"f"]},
+   {h:[70,34],t:88,hd:88,aN:n(3,27),aF:n(0,27),lN:[74,62,"f"],lF:[62,56,"f"]}]},
+ frp:{glow:1, props:[], k:[
+   {h:[60,84],t:180,hd:180,aN:[57,90,"b"],aF:[55,90,"b"],lN:[82,90,"f"],lF:[80,90,"f"]},
+   {h:[60,70],t:210,hd:195,aN:[57,90,"b"],aF:[55,90,"b"],lN:[82,90,"f"],lF:[80,90,"f"]}]},
+ spl:{mono:1, glow:1, props:[], k:[
+   {h:[56,74],t:20,hd:25,aN:[60,69,"u"],aF:[94,90,"d"],lN:[20,86,"f"],lF:[20,90,"f"]},
+   {h:[56,74],t:20,hd:25,aN:[60,69,"u"],aF:[94,90,"d"],lN:[28,62,"f"],lF:[20,90,"f"]}]},
+ g1:{front:1, mono:1, props:[], k:[
+   {h:[60,82],t:90,aN:[5,10,"f","n"],aF:[-5,10,"b","n"],lN:[44,88,"u"],lF:[30,88,"u"]},
+   {h:[60,82],t:90,aN:[5,10,"f","n"],aF:[-5,10,"b","n"],lN:[90,88,"u"],lF:[76,88,"u"]}]},
+ g2:{nofloor:1, props:[{r:[6,18,108,74]}], k:[
+   {h:[42,48],t:0,hd:0,aN:{a:[-90,-90]},aF:{a:[-92,-92]},lN:[30,76,"f"],lF:[32,78,"f"]},
+   {h:[42,48],t:0,hd:0,aN:{a:[90,90]},aF:{a:[-92,-92]},lN:[30,76,"f"],lF:[32,78,"f"]}]},
+ g3:{props:[{r:[2,20,7,72]},{cable:"wN",to:[9,44]}], k:[
+   {h:[54,62],t:90,hd:90,aN:[63,46,"b"],aF:[62,47,"b"],lN:[74,90,"f"],lF:[32,90,"f"]},
+   {h:[54,62],t:90,hd:90,aN:[84,46,"b"],aF:[83,47,"b"],lN:[74,90,"f"],lF:[32,90,"f"]}]},
+ g4:{props:[{r:[2,2,7,90]},{cable:"wN",to:[9,8]}], k:[
+   {h:[54,62],t:100,hd:110,aN:[30,14,"b"],aF:[32,15,"b"],lN:[74,90,"f"],lF:[32,90,"f"]},
+   {h:[54,62],t:80,hd:72,aN:[88,76,"b"],aF:[86,76,"b"],lN:[74,90,"f"],lF:[32,90,"f"]}]},
+ g5:{front:1, mono:1, glow:1, props:[], k:[
+   {h:[60,50],t:90,aN:[5,14,"f","n"],aF:[-5,14,"b","n"],lN:[72,90,"f"],lF:[48,90,"b"]},
+   {h:[74,64],t:78,hd:74,aN:[93,62,"f"],aF:[89,62,"b"],lN:[94,90,"f"],lF:[34,90,"b"]}]},
+ g6:{glow:1, props:[], k:[
+   {h:[58,50],t:90,hd:90,aN:n(3,27),aF:n(0,27),lN:[60,90,"f"],lF:[55,89,"f"]},
+   {h:[54,54],t:6,hd:0,aN:n(2,26),aF:n(-1,26),lN:[60,90,"f"],lF:[16,50,"f"]}]},
+ g7:{front:1, mono:1, props:[{l:[112,8,112,92],w:3},{ball:"wN",rr:6}], k:[
+   {h:[58,54],t:98,hd:95,aN:[42,58,"f"],aF:[40,60,"b"],lN:[76,90,"f"],lF:[44,90,"b"]},
+   {h:[64,52],t:84,hd:80,aN:[96,34,"f"],aF:[94,36,"b"],lN:[76,90,"f"],lF:[44,90,"b"]}]}
+};
+return {F, render};
+})();
+
 (function(){
 const DAYS = [
  {id:"d1", short:"Mon", title:"Glutes on machines", type:"machines", label:"Machines", focus:"Glutes, hamstrings, back", time:"60 min",
@@ -665,6 +875,7 @@ function renderDay(){
           ${r.extra?`<span class="extra">${esc(r.extra)}</span>`:""}
           ${memoFor(e,d,p)}
         </div>
+        <div class="fig"><svg viewBox="0 0 120 100" data-fig="${e.id}" role="img" aria-label="Animated demo: ${esc(e.name)}"></svg><a href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.name+' exercise form')}" target="_blank" rel="noopener">Watch a video ↗</a></div>
         <div class="log">
           ${bw?"":`<label>Weight <input type="text" inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="kg" aria-label="${esc(e.name)} weight in kg"${canWrite?"":" disabled"}></label>`}
           <label>Reps <input type="text" inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="top set" aria-label="${esc(e.name)} reps"${canWrite?"":" disabled"}></label>
@@ -675,6 +886,7 @@ function renderDay(){
   }
   html += `</article>`;
   document.getElementById("dayPanel").innerHTML = html;
+  initFigures();
 }
 let pendingDay = false;
 function scheduleDayRender(){
@@ -733,7 +945,7 @@ function renderMaxes(){
   document.getElementById("maxes").innerHTML = cards;
 }
 
-function renderAll(){ updateRing(); renderWeek(); renderScorecard(); renderTabs(); renderDay(); renderChart(); renderMaxes(); renderProfileValues(); renderCalcs(); renderMeasures(); }
+function renderAll(){ updateRing(); renderCheckin(); renderWeek(); renderScorecard(); renderTabs(); renderDay(); renderChart(); renderMaxes(); renderProfileValues(); renderCalcs(); renderMeasures(); }
 
 /* ---------- events ---------- */
 function saveUi(){ cacheLocal(); }
@@ -781,6 +993,7 @@ document.getElementById("profileForm").addEventListener("input", e=>{
   queueSave("program"); renderCalcs(); renderScorecard();
   if(el.dataset.p==="weight") scheduleDayRender();
   if(el.dataset.p==="start" && el.value){ autoWeek(); }
+  if(el.dataset.p==="start") renderCheckin();
 });
 function autoWeek(){
   const s = state.profile.start; if(!s) return false;
@@ -799,18 +1012,98 @@ document.getElementById("saveCheckin").addEventListener("click", ()=>{
   if(num(m.weight)!=null) state.profile = {...state.profile, weight: m.weight};
   queueSave("program");
   document.querySelectorAll("#measureForm [data-m]").forEach(el=>{ if(el.dataset.m!=="date") el.value=""; });
-  renderProfileValues(); renderCalcs(); renderMeasures(); scheduleDayRender();
+  renderProfileValues(); renderCalcs(); renderMeasures(); scheduleDayRender(); renderCheckin();
 });
 document.getElementById("measureTable").addEventListener("click", e=>{
   const b = e.target.closest("[data-rm]"); if(!b || !canWrite) return;
   state.measures = state.measures.filter(m=>m.id!==b.dataset.rm);
-  queueSave("program"); renderCalcs(); renderMeasures();
+  queueSave("program"); renderCalcs(); renderMeasures(); renderCheckin();
 });
 
 document.getElementById("themeBtn").addEventListener("click", ()=>{
   const root = document.documentElement;
   const dark = root.dataset.theme ? root.dataset.theme==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  root.dataset.theme = dark ? "light" : "dark"; ui.theme = root.dataset.theme; saveUi(); renderChart();
+  root.dataset.theme = dark ? "light" : "dark"; ui.theme = root.dataset.theme; saveUi(); renderChart(); initFigures();
+});
+
+/* ---------- exercise animations ---------- */
+const figVisible = new Set();
+let figObserver = null, colCache = new WeakMap();
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function figColors(svg){
+  const cs = getComputedStyle(svg), g = v => cs.getPropertyValue(v).trim();
+  return {ink:g("--ink")||"#15261D", soft:g("--soft")||"#E3EAE0", muted:g("--muted")||"#5B6B61", c:g("--c")||"#D95C71", paper:g("--paper")||"#fff"};
+}
+function drawFig(svg, s){
+  const f = FIG.F[svg.dataset.fig]; if(!f) return;
+  let col = colCache.get(svg); if(!col){ col = figColors(svg); colCache.set(svg,col); }
+  svg.innerHTML = FIG.render(f, s, col);
+}
+function initFigures(){
+  colCache = new WeakMap();
+  const svgs = document.querySelectorAll("#dayPanel svg[data-fig]");
+  figVisible.clear();
+  if(figObserver) figObserver.disconnect();
+  svgs.forEach(svg=>drawFig(svg, reduceMotion()?1:0));
+  if(reduceMotion()) return;
+  if("IntersectionObserver" in window){
+    figObserver = new IntersectionObserver(es=>es.forEach(e=>{ e.isIntersecting ? figVisible.add(e.target) : figVisible.delete(e.target); }));
+    svgs.forEach(svg=>figObserver.observe(svg));
+  } else svgs.forEach(svg=>figVisible.add(svg));
+}
+let lastFrame = 0;
+function figLoop(now){
+  requestAnimationFrame(figLoop);
+  if(now - lastFrame < 33 || reduceMotion()) return;
+  lastFrame = now;
+  let i = 0;
+  figVisible.forEach(svg=>{
+    const period = 2.8, t = now/1000/period + (i++)*0.13;
+    const raw = (1 - Math.cos(2*Math.PI*t))/2;
+    const x = Math.min(1, Math.max(0, (raw-0.08)/0.84));
+    drawFig(svg, x*x*(3-2*x));
+  });
+}
+requestAnimationFrame(figLoop);
+
+/* ---------- check-in reminder ---------- */
+const DAY = 86400000;
+const parseDay = s => { const m = String(s||"").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2]-1, +m[3]) : null; };
+const todayDate = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
+const isoDay = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const niceDay = d => d.toLocaleDateString("en-US",{weekday:"long", month:"short", day:"numeric"});
+function checkinState(){
+  const start = parseDay(state.profile.start), today = todayDate();
+  if(!start) return {type:"nostart"};
+  const days = Math.round((today - start)/DAY);
+  if(days < 0) return {type:"next", date:start};
+  const dates = state.measures.map(m=>parseDay(m.date)).filter(Boolean).sort((a,b)=>a-b);
+  if(!dates.length) return {type:"first"};
+  const idx = Math.floor(days/14);
+  const latest = dates[dates.length-1];
+  if(idx < 1) return {type:"next", date:new Date(start.getTime()+14*DAY)};
+  const checkpoint = new Date(start.getTime()+idx*14*DAY);
+  if(latest >= new Date(checkpoint.getTime()-2*DAY)) return {type:"next", date:new Date(start.getTime()+(idx+1)*14*DAY)};
+  return {type:"due", n:idx, week:idx*2};
+}
+function renderCheckin(){
+  const st = checkinState(), box = document.getElementById("checkinBanner"), next = document.getElementById("nextCheckin");
+  next.textContent = st.type==="next" ? "Next check-in: " + niceDay(st.date) : "";
+  if(st.type==="next" || ui.snooze===isoDay(todayDate())){ box.innerHTML=""; return; }
+  const content = {
+    due:{h:`Check-in time, Viky!`, p:`You've finished ${st.week} weeks. Take your measurements and photos, then send your progress to Coach Ibrahim.`, b:[["log","Log my measurements","pri"],["copy","Copy my progress","sec"],["snooze","Remind me tomorrow","sec"]]},
+    first:{h:"Start strong, Viky", p:"Save your starting measurements today. Every centimeter from here gets tracked.", b:[["log","Log my measurements","pri"],["snooze","Later","sec"]]},
+    nostart:{h:"When do you start?", p:"Set your program start date so your weeks and check-in reminders line up.", b:[["start","Set my start date","pri"]]}
+  }[st.type];
+  box.innerHTML = `<div class="checkin" role="status"><h3>${esc(content.h)}</h3><p>${esc(content.p)}</p><div class="row">${content.b.map(([a,t,c])=>`<button type="button" class="${c}" data-ci="${a}">${esc(t)}</button>`).join("")}</div></div>`;
+}
+document.getElementById("checkinBanner").addEventListener("click", e=>{
+  const a = e.target.closest("[data-ci]")?.dataset.ci; if(!a) return;
+  const go = (sel, focusSel) => { document.querySelector(sel).scrollIntoView({behavior: reduceMotion()?"auto":"smooth", block:"center"}); if(focusSel) setTimeout(()=>document.querySelector(focusSel)?.focus({preventScroll:true}), 450); };
+  if(a==="log") go("#measureForm", '#measureForm [data-m="weight"]');
+  if(a==="start") go("#profileForm", '#profileForm [data-p="start"]');
+  if(a==="copy"){ go("#share"); document.getElementById("copyProgress").click(); }
+  if(a==="snooze"){ ui.snooze = isoDay(todayDate()); saveUi(); renderCheckin(); }
 });
 
 /* ---------- share + restore ---------- */
